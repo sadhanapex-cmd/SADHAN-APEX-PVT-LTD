@@ -1316,44 +1316,71 @@ const db = {
     return true;
   },
 
-  // AUTOMATICALLY APPLY 8% PENALTY TO ALL LOANS FOR EVERY 58 INSTALLMENTS EXCEEDED
+  // AUTOMATICALLY APPLY LKR 50.00 PER EXTRA DAY OVERDUE PAST 58-DAY LIMIT
   autoApplyOverduePenalties: async () => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo' }).format(new Date());
+    const todayDate = new Date(todayStr + 'T00:00:00Z');
 
     if (usePostgres) {
       try {
         const activeLoansRes = await pgPool.query(
-          `SELECT id, start_date, frequency, remaining_balance, end_date, notes, penalty_count, total_penalties, created_at 
-           FROM loans 
-           WHERE status = 'ACTIVE' AND remaining_balance > 0`
+          `SELECT l.id, l.principal_amount, l.interest_rate_pct, l.remaining_balance, 
+                  l.total_payable, l.total_paid, l.total_interest, l.total_penalties,
+                  l.penalty_count, l.penalty_applied, l.start_date, l.end_date, l.notes,
+                  (SELECT due_date FROM installments WHERE loan_id = l.id AND installment_no = 58) AS inst58_date
+           FROM loans l 
+           WHERE l.status = 'ACTIVE' AND l.remaining_balance > 0`
         );
 
         for (const loan of activeLoansRes.rows) {
           try {
-            const start = new Date(loan.start_date || loan.created_at);
-            let stepDays = 1;
-            if (loan.frequency === 'WEEKLY') stepDays = 7;
-            if (loan.frequency === 'MONTHLY') stepDays = 30;
-
-            let currentCount = parseInt(loan.penalty_count, 10) || 0;
-            if (currentCount === 0 && loan.notes && loan.notes.includes('[Penalty')) {
-              const m = loan.notes.match(/\[Penalty/g);
-              currentCount = m ? m.length : 1;
+            let limitDateStr = null;
+            if (loan.inst58_date) {
+              limitDateStr = loan.inst58_date instanceof Date ? loan.inst58_date.toISOString().split('T')[0] : String(loan.inst58_date).split('T')[0];
+            } else if (loan.end_date) {
+              limitDateStr = loan.end_date instanceof Date ? loan.end_date.toISOString().split('T')[0] : String(loan.end_date).split('T')[0];
+            } else if (loan.start_date) {
+              const start = new Date(loan.start_date);
+              const limit = new Date(start.getTime() + 58 * 86400000);
+              limitDateStr = limit.toISOString().split('T')[0];
             }
 
-            let cycle = currentCount + 1;
-            while (true) {
-              const cycleDue = new Date(start.getTime() + (cycle * 58) * stepDays * 86400000);
-              const cycleDueStr = cycleDue.toISOString().split('T')[0];
+            if (!limitDateStr) continue;
 
-              if (todayStr > cycleDueStr) {
-                console.log(`[Auto-Penalty] Auto-applying 8% penalty cycle #${cycle} on loan ID ${loan.id}`);
-                const updated = await db.applyPenalty(loan.id, 8.0, cycle);
-                if (!updated || parseFloat(updated.remaining_balance) <= 0) break;
-                cycle++;
-              } else {
-                break;
-              }
+            const limitDate = new Date(limitDateStr + 'T00:00:00Z');
+            if (todayDate <= limitDate) {
+              continue;
+            }
+
+            const overdueDays = Math.max(0, Math.floor((todayDate - limitDate) / 86400000));
+            if (overdueDays <= 0) continue;
+
+            const currentChargedDays = parseInt(loan.penalty_count, 10) || 0;
+            if (overdueDays > currentChargedDays) {
+              const daysToCharge = overdueDays - currentChargedDays;
+              const penaltyDelta = daysToCharge * 50.00;
+              const newTotalPenalties = Math.round(((parseFloat(loan.total_penalties) || 0) + penaltyDelta) * 100) / 100;
+              const newRemaining = Math.round((parseFloat(loan.remaining_balance) + penaltyDelta) * 100) / 100;
+              const newTotalPayable = Math.round((parseFloat(loan.total_payable) + penaltyDelta) * 100) / 100;
+              const newTotalInterest = Math.round((parseFloat(loan.total_interest) + penaltyDelta) * 100) / 100;
+
+              const noteMsg = ` [Overdue Penalty: ${overdueDays} day(s) overdue @ Rs. 50/day (Total: Rs. ${newTotalPenalties})]`;
+              let cleanNotes = (loan.notes || '').replace(/\s*\[(?:Penalty|Overdue Penalty)[^\]]*\]/g, '').trim();
+              const updatedNotes = cleanNotes ? `${cleanNotes}${noteMsg}` : noteMsg.trim();
+
+              await pgPool.query(
+                `UPDATE loans 
+                 SET remaining_balance = $1,
+                     total_payable = $2,
+                     total_interest = $3,
+                     total_penalties = $4,
+                     penalty_count = $5,
+                     penalty_applied = TRUE,
+                     notes = $6
+                 WHERE id = $7`,
+                [newRemaining, newTotalPayable, newTotalInterest, newTotalPenalties, overdueDays, updatedNotes, loan.id]
+              );
+              console.log(`[Auto-Penalty] Loan #${loan.id}: ${overdueDays} days overdue (+Rs. ${penaltyDelta} added)`);
             }
           } catch (err) {
             console.error(`[Auto-Penalty Error] Loan ${loan.id}:`, err);
@@ -1371,41 +1398,49 @@ const db = {
 
     for (const loan of activeLoans) {
       try {
-        const start = new Date(loan.start_date || loan.created_at);
-        let stepDays = 1;
-        if (loan.frequency === 'WEEKLY') stepDays = 7;
-        if (loan.frequency === 'MONTHLY') stepDays = 30;
-
-        let currentCount = parseInt(loan.penalty_count, 10) || 0;
-        if (currentCount === 0 && loan.notes && loan.notes.includes('[Penalty')) {
-          const m = loan.notes.match(/\[Penalty/g);
-          currentCount = m ? m.length : 1;
+        const inst58 = (localStore.installments || []).find(i => i.loan_id === loan.id && i.installment_no === 58);
+        let limitDateStr = inst58?.due_date || loan.end_date;
+        if (!limitDateStr && loan.start_date) {
+          const start = new Date(loan.start_date);
+          const limit = new Date(start.getTime() + 58 * 86400000);
+          limitDateStr = limit.toISOString().split('T')[0];
         }
 
-        let cycle = currentCount + 1;
-        while (true) {
-          const cycleDue = new Date(start.getTime() + (cycle * 58) * stepDays * 86400000);
-          const cycleDueStr = cycleDue.toISOString().split('T')[0];
+        if (!limitDateStr) continue;
 
-          if (todayStr > cycleDueStr) {
-            console.log(`[Auto-Penalty] Auto-applying 8% penalty cycle #${cycle} on loan ID ${loan.id}`);
-            const updated = await db.applyPenalty(loan.id, 8.0, cycle);
-            if (!updated || parseFloat(updated.remaining_balance) <= 0) break;
-            cycle++;
-          } else {
-            break;
-          }
+        const limitDate = new Date(limitDateStr + 'T00:00:00Z');
+        if (todayDate <= limitDate) continue;
+
+        const overdueDays = Math.max(0, Math.floor((todayDate - limitDate) / 86400000));
+        if (overdueDays <= 0) continue;
+
+        const currentChargedDays = parseInt(loan.penalty_count, 10) || 0;
+        if (overdueDays > currentChargedDays) {
+          const daysToCharge = overdueDays - currentChargedDays;
+          const penaltyDelta = daysToCharge * 50.00;
+          loan.total_penalties = Math.round(((parseFloat(loan.total_penalties) || 0) + penaltyDelta) * 100) / 100;
+          loan.remaining_balance = Math.round((parseFloat(loan.remaining_balance) + penaltyDelta) * 100) / 100;
+          loan.total_payable = Math.round((parseFloat(loan.total_payable) + penaltyDelta) * 100) / 100;
+          loan.total_interest = Math.round((parseFloat(loan.total_interest) + penaltyDelta) * 100) / 100;
+          loan.penalty_count = overdueDays;
+          loan.penalty_applied = true;
+
+          const noteMsg = ` [Overdue Penalty: ${overdueDays} day(s) overdue @ Rs. 50/day (Total: Rs. ${loan.total_penalties})]`;
+          let cleanNotes = (loan.notes || '').replace(/\s*\[(?:Penalty|Overdue Penalty)[^\]]*\]/g, '').trim();
+          loan.notes = cleanNotes ? `${cleanNotes}${noteMsg}` : noteMsg.trim();
         }
       } catch (err) {
         console.error(`[Auto-Penalty Error] Loan ${loan.id}:`, err);
       }
     }
+    saveLocalStore();
   },
 
-  // APPLY 8% OVERDUE PENALTY (Recurring every 58-installment cycle exceeded)
-  applyPenalty: async (loanId, penaltyPct = 8.0, targetCycle = null) => {
+  // APPLY OVERDUE PENALTY (LKR 50.00 per extra day overdue past 58-day limit)
+  applyPenalty: async (loanId, daysCount = 1, customAmount = null) => {
     const id = parseInt(loanId, 10);
-    const rate = parseFloat(penaltyPct) || 8.0;
+    const days = Math.max(1, parseInt(daysCount, 10) || 1);
+    const penaltyAmount = customAmount !== null ? parseFloat(customAmount) : (days * 50.00);
 
     if (usePostgres) {
       const client = await pgPool.connect();
@@ -1421,87 +1456,30 @@ const db = {
           return loan;
         }
 
-        let currentPenaltyCount = parseInt(loan.penalty_count, 10) || 0;
-        if (currentPenaltyCount === 0 && loan.notes && loan.notes.includes('[Penalty')) {
-          const m = loan.notes.match(/\[Penalty/g);
-          currentPenaltyCount = m ? m.length : 1;
-        }
+        const currentPenaltyCount = parseInt(loan.penalty_count, 10) || 0;
+        const newPenaltyCount = currentPenaltyCount + days;
 
-        const nextCycle = targetCycle !== null ? targetCycle : (currentPenaltyCount + 1);
-        if (nextCycle <= currentPenaltyCount) {
-          await client.query('COMMIT');
-          return loan;
-        }
+        const newRemaining = Math.round((rem + penaltyAmount) * 100) / 100;
+        const newTotalPayable = Math.round((parseFloat(loan.total_payable) + penaltyAmount) * 100) / 100;
+        const newTotalInterest = Math.round((parseFloat(loan.total_interest) + penaltyAmount) * 100) / 100;
+        const newTotalPenalties = Math.round(((parseFloat(loan.total_penalties) || 0) + penaltyAmount) * 100) / 100;
 
-        const penaltyAmount = Math.round(rem * (rate / 100));
-        if (penaltyAmount <= 0) {
-          await client.query('COMMIT');
-          return loan;
-        }
-
-        const newRemaining = Math.round(rem + penaltyAmount);
-        const newTotalPayable = Math.round(parseFloat(loan.total_payable) + penaltyAmount);
-        const newTotalInterest = Math.round(parseFloat(loan.total_interest) + penaltyAmount);
-        const newTotalPenalties = Math.round((parseFloat(loan.total_penalties) || 0) + penaltyAmount);
-
-        let stepDays = 1;
-        if (loan.frequency === 'WEEKLY') stepDays = 7;
-        if (loan.frequency === 'MONTHLY') stepDays = 30;
-        const start = new Date(loan.start_date || loan.created_at);
-
-        // Every penalty cycle unlocks an extra set of 58 installments
-        // Cycle 1: (1 + 1) * 58 = 116 slots
-        // Cycle 2: (2 + 1) * 58 = 174 slots
-        // Cycle 3: (3 + 1) * 58 = 232 slots
-        const targetSlots = Math.max(parseInt(loan.installment_count, 10) || 58, (nextCycle + 1) * 58);
-        const instAmt = parseFloat(loan.installment_amount) || 100;
-
-        const instsRes = await client.query(
-          'SELECT id, installment_no, status FROM installments WHERE loan_id = $1 ORDER BY installment_no ASC',
-          [id]
-        );
-        const existingInsts = instsRes.rows;
-        const maxExistingNo = existingInsts.length ? Math.max(...existingInsts.map(i => i.installment_no)) : 58;
-
-        // Activate existing BLANK buffer slots
-        await client.query(
-          `UPDATE installments 
-           SET expected_amount = $1, status = 'PENDING' 
-           WHERE loan_id = $2 AND status = 'BLANK'`,
-          [instAmt, id]
-        );
-
-        // Append new 58-installment set slots up to targetSlots
-        for (let i = maxExistingNo + 1; i <= targetSlots; i++) {
-          const instDate = new Date(start.getTime() + i * stepDays * 86400000);
-          await client.query(
-            `INSERT INTO installments (loan_id, installment_no, due_date, expected_amount, paid_amount, status)
-             VALUES ($1, $2, $3, $4, 0.00, 'PENDING')`,
-            [id, i, instDate.toISOString().split('T')[0], instAmt]
-          );
-        }
-
-        const newEndDateRes = await client.query(
-          'SELECT due_date FROM installments WHERE loan_id = $1 ORDER BY installment_no DESC LIMIT 1',
-          [id]
-        );
-        const newEndDate = newEndDateRes.rows[0].due_date;
-        const penaltyNote = ` [Penalty Cycle #${nextCycle}: Rs. ${penaltyAmount} (${rate}% overdue penalty on remaining Rs. ${rem})]`;
+        const penaltyNote = ` [Overdue Penalty: ${newPenaltyCount} day(s) overdue @ Rs. 50/day (Total: Rs. ${newTotalPenalties})]`;
+        let cleanNotes = (loan.notes || '').replace(/\s*\[(?:Penalty|Overdue Penalty)[^\]]*\]/g, '').trim();
+        const updatedNotes = cleanNotes ? `${cleanNotes}${penaltyNote}` : penaltyNote.trim();
 
         const updatedRes = await client.query(
           `UPDATE loans 
            SET remaining_balance = $1, total_payable = $2, total_interest = $3,
-               installment_count = $4, end_date = $5,
-               notes = COALESCE(notes, '') || $6,
+               notes = $4,
                penalty_applied = TRUE,
-               penalty_count = $7,
-               total_penalties = $8
-           WHERE id = $9 RETURNING *`,
+               penalty_count = $5,
+               total_penalties = $6
+           WHERE id = $7 RETURNING *`,
           [
             newRemaining, newTotalPayable, newTotalInterest,
-            targetSlots, newEndDate,
-            penaltyNote,
-            nextCycle,
+            updatedNotes,
+            newPenaltyCount,
             newTotalPenalties,
             id
           ]
@@ -1527,64 +1505,20 @@ const db = {
       return loan;
     }
 
-    let currentPenaltyCount = parseInt(loan.penalty_count, 10) || 0;
-    if (currentPenaltyCount === 0 && loan.notes && loan.notes.includes('[Penalty')) {
-      const m = loan.notes.match(/\[Penalty/g);
-      currentPenaltyCount = m ? m.length : 1;
-    }
+    const currentPenaltyCount = parseInt(loan.penalty_count, 10) || 0;
+    const newPenaltyCount = currentPenaltyCount + days;
 
-    const nextCycle = targetCycle !== null ? targetCycle : (currentPenaltyCount + 1);
-    if (nextCycle <= currentPenaltyCount) {
-      return loan;
-    }
-
-    const penaltyAmount = Math.round(rem * (rate / 100));
-    if (penaltyAmount <= 0) return loan;
-
-    const newRemaining = Math.round(rem + penaltyAmount);
+    const newRemaining = Math.round((rem + penaltyAmount) * 100) / 100;
     loan.remaining_balance = newRemaining;
-    loan.total_payable = Math.round(parseFloat(loan.total_payable) + penaltyAmount);
-    loan.total_interest = Math.round(parseFloat(loan.total_interest) + penaltyAmount);
-    loan.total_penalties = Math.round((parseFloat(loan.total_penalties) || 0) + penaltyAmount);
-    loan.penalty_count = nextCycle;
+    loan.total_payable = Math.round((parseFloat(loan.total_payable) + penaltyAmount) * 100) / 100;
+    loan.total_interest = Math.round((parseFloat(loan.total_interest) + penaltyAmount) * 100) / 100;
+    loan.total_penalties = Math.round(((parseFloat(loan.total_penalties) || 0) + penaltyAmount) * 100) / 100;
+    loan.penalty_count = newPenaltyCount;
     loan.penalty_applied = true;
-    loan.notes = (loan.notes ? loan.notes + ' ' : '') + `[Penalty Cycle #${nextCycle}: Rs. ${penaltyAmount} (${rate}% overdue penalty on remaining Rs. ${rem})]`;
 
-    let stepDays = 1;
-    if (loan.frequency === 'WEEKLY') stepDays = 7;
-    if (loan.frequency === 'MONTHLY') stepDays = 30;
-    const start = new Date(loan.start_date || loan.created_at);
-
-    const targetSlots = Math.max(parseInt(loan.installment_count, 10) || 58, (nextCycle + 1) * 58);
-    const instAmt = parseFloat(loan.installment_amount) || 100;
-
-    const loanInsts = localStore.installments.filter(i => i.loan_id === id);
-    const maxExistingNo = loanInsts.length ? Math.max(...loanInsts.map(i => i.installment_no)) : 58;
-
-    loanInsts.filter(i => i.status === 'BLANK').forEach(blank => {
-      blank.expected_amount = instAmt;
-      blank.status = 'PENDING';
-    });
-
-    for (let i = maxExistingNo + 1; i <= targetSlots; i++) {
-      const instDate = new Date(start.getTime() + i * stepDays * 86400000);
-      const instId = localStore.installments.length ? Math.max(...localStore.installments.map(inst => inst.id)) + 1 : 1;
-      localStore.installments.push({
-        id: instId,
-        loan_id: id,
-        installment_no: i,
-        due_date: instDate.toISOString().split('T')[0],
-        expected_amount: instAmt,
-        paid_amount: 0.00,
-        status: 'PENDING'
-      });
-    }
-
-    loan.installment_count = targetSlots;
-    const finalInst = localStore.installments
-      .filter(i => i.loan_id === id)
-      .sort((a, b) => b.installment_no - a.installment_no)[0];
-    if (finalInst) loan.end_date = finalInst.due_date;
+    const penaltyNote = ` [Overdue Penalty: ${newPenaltyCount} day(s) overdue @ Rs. 50/day (Total: Rs. ${loan.total_penalties})]`;
+    let cleanNotes = (loan.notes || '').replace(/\s*\[(?:Penalty|Overdue Penalty)[^\]]*\]/g, '').trim();
+    loan.notes = cleanNotes ? `${cleanNotes}${penaltyNote}` : penaltyNote.trim();
 
     saveLocalStore();
     return loan;
@@ -2052,13 +1986,14 @@ const db = {
 
     const penalties = penaltyLoansList.map(item => {
       const daysOverdue = item.end_date ? Math.max(1, Math.floor((new Date(todayStr) - new Date(item.end_date)) / 86400000)) : 1;
-      const count = parseInt(item.penalty_count, 10) || 1;
+      const count = parseInt(item.penalty_count, 10) || daysOverdue;
+      const totalPen = parseFloat(item.total_penalties) || (count * 50);
       return {
         ...item,
         urgency: 'PENALTY',
         days_overdue: daysOverdue,
-        title: `${count * 8}% Overdue Penalty (${count}x 58-Cycles)`,
-        message: `${item.client_name} exceeded ${count * 58} installments (${daysOverdue} days overdue). ${count}x 8% overdue penalties applied. Outstanding: Rs. ${Math.round(parseFloat(item.remaining_balance)).toLocaleString()}.`
+        title: `Overdue Penalty (${daysOverdue} extra day${daysOverdue === 1 ? '' : 's'})`,
+        message: `${item.client_name} exceeded 58-day loan limit (${daysOverdue} extra day(s) overdue). Rs. 50/day penalty applied (Total: Rs. ${Math.round(totalPen).toLocaleString()}). Outstanding: Rs. ${Math.round(parseFloat(item.remaining_balance)).toLocaleString()}.`
       };
     });
 

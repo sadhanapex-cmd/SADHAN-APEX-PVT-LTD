@@ -441,11 +441,11 @@ app.put('/api/loans/:id', verifyToken, requireOwner, async (req, res) => {
   }
 });
 
-// APPLY OVERDUE PENALTY (8% on remaining balance after 58 days)
+// APPLY OVERDUE PENALTY (LKR 50.00 per extra day overdue past limit)
 app.post('/api/loans/:id/penalty', verifyToken, requireOwner, async (req, res) => {
   try {
-    const { penalty_pct = 8.0 } = req.body;
-    const updated = await db.applyPenalty(req.params.id, penalty_pct);
+    const { days = 1, amount = null } = req.body;
+    const updated = await db.applyPenalty(req.params.id, days, amount);
     return res.json({ loan: updated, message: 'Overdue penalty applied successfully' });
   } catch (err) {
     console.error('Error applying penalty:', err);

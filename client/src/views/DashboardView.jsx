@@ -124,7 +124,7 @@ export default function DashboardView({
             <div>
               <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
                 {(reminders?.penalties?.length || 0) > 0
-                  ? `⚠️ Overdue Notice: ${reminders.penalties.length} loan(s) exceeded 58 days (8% penalty auto-added)!`
+                  ? `⚠️ Overdue Notice: ${reminders.penalties.length} loan(s) exceeded 58 days (Rs. 50/day penalty applied)!`
                   : (reminders?.overdue?.length || 0) > 0
                     ? `Attention: ${reminders.overdue.length} Overdue Installments require follow up!`
                     : `Reminder: ${reminders.due_today.length} Installments are due today.`}

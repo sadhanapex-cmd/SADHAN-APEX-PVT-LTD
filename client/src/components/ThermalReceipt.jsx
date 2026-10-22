@@ -62,10 +62,10 @@ export default function ThermalReceipt({ receipt, onClose }) {
       receipt.client_phone ? `CONTACT: ${receipt.client_phone}` : '',
       `LOAN REF: ${receipt.loan_code}`,
       issuedDateFormatted ? `ISSUED DATE: ${issuedDateFormatted}` : '',
-      `PLAN: ${hasPenalty ? `Extended (+${penaltyCount * 8}%)` : '58 Days (2-Month)'}`,
+      `PLAN: ${hasPenalty ? `Overdue (+Rs. 50/day)` : '58 Days (2-Month)'}`,
       `INSTALLMENT: #${receipt.current_installment_no || 1} of ${receipt.installment_count || 58}`,
       hasPenalty
-        ? `OVERDUE PENALTY: ${penaltyCount} Cycle(s) (+${penaltyCount * 8}%) | Surcharge: Rs. ${Math.round(totalPenalties).toLocaleString()}`
+        ? `OVERDUE PENALTY: ${penaltyCount} Extra Day(s) @ Rs. 50/day | Total: Rs. ${Math.round(totalPenalties).toLocaleString()}`
         : (receipt.is_reprint ? 'OVERDUE PENALTY: None (Rs. 0)' : ''),
       '================================',
       `AMOUNT RECEIVED: Rs. ${Math.round(Number(receipt.amount_paid)).toLocaleString()}`,
@@ -174,7 +174,7 @@ export default function ThermalReceipt({ receipt, onClose }) {
         if (issuedDateFormatted) {
           drawRow('ISSUED DATE:', issuedDateFormatted, false);
         }
-        drawRow('PLAN:', hasPenalty ? `Extended (+${penaltyCount * 8}%)` : '58 Days (2-Month)', hasPenalty);
+        drawRow('PLAN:', hasPenalty ? `Overdue (+Rs. 50/day)` : '58 Days (2-Month)', hasPenalty);
         drawRow('INSTALLMENT:', `#${receipt.current_installment_no || 1} of ${receipt.installment_count || 58}`, true, true);
 
         drawDivider();
@@ -199,10 +199,10 @@ export default function ThermalReceipt({ receipt, onClose }) {
           y = pBoxTop + 10;
           drawCenter(receipt.is_reprint ? '*** OVERDUE PENALTY RECORD ***' : '*** OVERDUE PENALTY ***', '14px Arial, sans-serif', true);
           y += 20;
-          drawCenter(`Cycles Exceeded: ${penaltyCount} (+${penaltyCount * 8}% Surcharge)`, '13px Arial, sans-serif', true);
+          drawCenter(`Days Overdue: ${penaltyCount} (Rs. 50.00/day)`, '13px Arial, sans-serif', true);
           y += 20;
           if (totalPenalties > 0) {
-            drawCenter(`Added Penalty Surcharge: + Rs. ${Math.round(totalPenalties).toLocaleString()}`, '13px Arial, sans-serif', true);
+            drawCenter(`Total Overdue Penalty: + Rs. ${Math.round(totalPenalties).toLocaleString()}`, '13px Arial, sans-serif', true);
           }
           y = pBoxTop + boxH + 8;
         } else if (receipt.is_reprint) {
@@ -446,7 +446,7 @@ export default function ThermalReceipt({ receipt, onClose }) {
             <div className="receipt-row">
               <span className="receipt-label">PLAN:</span>
               <span className="receipt-value" style={{ fontWeight: hasPenalty ? '800' : 'normal' }}>
-                {hasPenalty ? `Extended (+${penaltyCount * 8}%)` : '58 Days (2-Month)'}
+                {hasPenalty ? `Overdue (+Rs. 50/day)` : '58 Days (2-Month)'}
               </span>
             </div>
             <div className="receipt-row">
@@ -479,11 +479,11 @@ export default function ThermalReceipt({ receipt, onClose }) {
                   {receipt.is_reprint ? '*** OVERDUE PENALTY RECORD ***' : '*** OVERDUE PENALTY ***'}
                 </div>
                 <div style={{ fontSize: '8.5px', fontWeight: '700', color: '#111', marginTop: '2px' }}>
-                  Cycles Exceeded: {penaltyCount} (+${penaltyCount * 8}% Surcharge)
+                  Days Overdue: {penaltyCount} (Rs. 50.00/day)
                 </div>
                 {totalPenalties > 0 && (
                   <div style={{ fontSize: '9px', fontWeight: '800', marginTop: '2px' }}>
-                    Added Penalty Surcharge: + Rs. {Math.round(totalPenalties).toLocaleString()}
+                    Total Overdue Penalty: + Rs. {Math.round(totalPenalties).toLocaleString()}
                   </div>
                 )}
               </div>

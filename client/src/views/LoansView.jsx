@@ -166,7 +166,7 @@ export default function LoansView({
                         <span className={`status-badge badge-${loan.status.toLowerCase()}`}>
                           {loan.status}
                         </span>
-                        {(loan.penalty_applied || (loan.notes && loan.notes.includes('[Penalty applied'))) && (
+                        {(loan.penalty_applied || (loan.notes && (loan.notes.includes('[Penalty') || loan.notes.includes('[Overdue Penalty')))) && (
                           <span style={{
                             fontSize: '0.68rem',
                             fontWeight: '700',
@@ -178,7 +178,7 @@ export default function LoansView({
                             textAlign: 'center',
                             whiteSpace: 'nowrap'
                           }}>
-                            +8% PENALTY
+                            OVERDUE PENALTY
                           </span>
                         )}
                       </div>

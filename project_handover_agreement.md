@@ -45,11 +45,11 @@ The system has been developed, tested, and deployed to production. Below is the 
 - **Top-Up & Adjustment:** Capability for administrators to top-up active loans and adjust principal/interest with real-time recalculation of remaining balance.
 - **Status Workflows:** Automated state transitions across `ACTIVE`, `OVERDUE`, `PENALTY`, and `COMPLETED`.
 
-### B. Automated 58-Cycle Compounding Penalty Engine
-- **Autonomous Penalty Application:** Eliminates manual penalty triggering by automatically applying an 8% overdue surcharge every 58 installments (cycles) if a loan remains unpaid.
-- **Compounding Cycle Support:** Automatically handles extended overdue durations (Cycle 1 at 58 days, Cycle 2 at 116 days, Cycle 3 at 174 days, etc.).
-- **Remaining Balance Recalculation:** Penalties are accurately calculated as 8% of the remaining outstanding balance at that cycle and added to the principal balance.
-- **Audit Logging:** System automatically logs penalty history, penalty counts, and notifies collectors.
+### B. Daily Overdue Penalty Engine (LKR 50.00 / Extra Day)
+- **Autonomous Daily Overdue Penalty:** Eliminates manual penalty triggering by automatically applying flat LKR 50.00 for each extra day overdue beyond the 58-day loan limit if an active balance remains.
+- **Equal Daily Flat Rate:** Applies flat LKR 50.00 per overdue day regardless of the initial loan principal amount.
+- **Accurate Balance Accumulation:** Accumulated daily penalties are automatically added to remaining balance, total payable, and total penalties, and itemized on thermal receipts.
+- **Audit Logging:** System automatically logs penalty history, overdue days count, and notifies collectors.
 
 ### C. Field Collections Queue & Real-Time Reminders
 - **Priority Queue 1 — Scheduled For Today:** Dedicated top-section highlighting all accounts due today, displaying today's installment and any accumulated past arrears.

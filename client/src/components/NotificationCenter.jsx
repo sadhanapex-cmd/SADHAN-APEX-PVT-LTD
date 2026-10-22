@@ -68,7 +68,7 @@ export default function NotificationCenter({ reminders, onClose, onQuickPay }) {
                     marginBottom: '10px'
                   }}>
                     <AlertTriangle size={18} />
-                    <span>58-DAY LIMIT EXCEEDED • 8% PENALTIES ({reminders.penalties.length})</span>
+                    <span>58-DAY LIMIT EXCEEDED • OVERDUE PENALTIES (Rs. 50/DAY) ({reminders.penalties.length})</span>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -91,7 +91,7 @@ export default function NotificationCenter({ reminders, onClose, onQuickPay }) {
                             {item.client_name} • 58-Day Limit Exceeded
                           </div>
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                            {item.loan_code} • {item.days_overdue} days past 58-day window • 8% auto-added
+                            {item.loan_code} • {item.days_overdue} extra day(s) overdue • Rs. 50/day penalty
                           </div>
                           <div style={{ fontSize: '0.88rem', fontWeight: '800', color: 'var(--text-primary)', marginTop: '4px' }}>
                             Outstanding Balance: Rs. {Math.round(Number(item.remaining_balance)).toLocaleString()}

@@ -538,12 +538,12 @@
       <li><strong>Status Lifecycle:</strong> Real-time state transitions across <code>ACTIVE</code>, <code>OVERDUE</code>, <code>PENALTY</code>, and <code>COMPLETED</code>.</li>
     </ul>
 
-    <h3>B. Autonomous 58-Cycle Compounding Penalty Engine</h3>
+    <h3>B. Daily Overdue Penalty Engine (LKR 50.00 / Extra Day)</h3>
     <ul style="font-size: 9.5pt;">
-      <li><strong>Automated Penalty Application:</strong> Zero manual intervention required; system automatically applies an 8% overdue surcharge for every 58 installments past due.</li>
-      <li><strong>Compounding Cycle Engine:</strong> Handles prolonged arrears (Cycle 1 at 58 days, Cycle 2 at 116 days, Cycle 3 at 174 days, etc.).</li>
-      <li><strong>Accurate Recalculation:</strong> 8% is applied strictly to the remaining outstanding balance at that cycle and added to the principal balance.</li>
-      <li><strong>Audit Logging:</strong> Logs every penalty event, cycle count, and arrears timestamp.</li>
+      <li><strong>Autonomous Daily Overdue Penalty:</strong> Automatically applies flat LKR 50.00 for each extra day overdue beyond the 58-day loan limit if an active balance remains.</li>
+      <li><strong>Equal Daily Flat Rate:</strong> Applies flat LKR 50.00 per overdue day regardless of initial principal amount.</li>
+      <li><strong>Accurate Balance Accumulation:</strong> Accumulated daily penalties are automatically added to remaining balance, total payable, and itemized on thermal receipts.</li>
+      <li><strong>Audit Logging:</strong> Logs every penalty event, overdue day count, and arrears timestamp.</li>
     </ul>
 
     <h3>C. Field Collections Queue &amp; Scheduling</h3>

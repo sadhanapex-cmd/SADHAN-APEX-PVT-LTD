@@ -354,7 +354,7 @@ export default function CollectionsView({
                           </div>
                         </div>
                         <span className="status-badge" style={{ background: '#ef4444', color: '#fff', fontWeight: '800' }}>
-                          8% Penalty Added
+                          Rs. 50/Day Penalty
                         </span>
                       </div>
 
@@ -366,7 +366,7 @@ export default function CollectionsView({
                       }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
                           <span style={{ color: 'var(--text-muted)' }}>Overdue Window:</span>
-                          <span style={{ fontWeight: '600', color: '#fca5a5' }}>{item.days_overdue} days past 58 days</span>
+                          <span style={{ fontWeight: '600', color: '#fca5a5' }}>{item.days_overdue} extra day(s) past limit</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.05rem', marginTop: '6px' }}>
                           <span style={{ fontWeight: '600' }}>Outstanding Balance:</span>
